@@ -1,0 +1,109 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+    function isValidDonor(data) {
+      return data.keys().hasAll(['userId', 'displayName', 'email', 'bloodGroup', 'role']) &&
+             data.userId == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] &&
+             data.role == 'donor' &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             (data.get('bonusPoints', 0) is number) &&
+             (data.get('rating', 0) is number);
+    }
+
+    function isValidHospital(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'role']) &&
+             data.userId == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role == 'hospital' &&
+             data.name is string && data.name.size() <= 150;
+    }
+
+    function isValidEmergencyRequest(data) {
+      return data.keys().hasAll(['hospitalId', 'bloodGroup', 'unitsNeeded', 'urgency', 'status', 'createdAt']) &&
+             data.hospitalId == request.auth.uid &&
+             data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] &&
+             data.unitsNeeded is number && data.unitsNeeded > 0 &&
+             data.urgency in ['high', 'medium', 'low'] &&
+             data.status in ['pending', 'fulfilled', 'cancelled'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidDonation(data) {
+      return data.keys().hasAll(['donorId', 'hospitalId', 'date', 'bloodGroup']) &&
+             data.hospitalId == request.auth.uid &&
+             data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] &&
+             data.date == request.time;
+    }
+
+    // --- Collections ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.role == 'donor'; // Hospitals need to list donors
+      allow create: if isOwner(userId) && isValidDonor(incoming());
+      allow update: if isOwner(userId) && isValidDonor(incoming()) && 
+                    incoming().role == existing().role &&
+                    incoming().bonusPoints == existing().bonusPoints &&
+                    incoming().rating == existing().rating &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'location', 'isAvailable', 'lastDonationDate']);
+      // System update (hospitals incrementing points) would happen via server or specific action
+      // But for this demo, let's allow hospitals to update donor stats when recording donation
+      allow update: if exists(/databases/$(database)/documents/hospitals/$(request.auth.uid)) &&
+                    incoming().role == existing().role &&
+                    incoming().userId == existing().userId &&
+                    incoming().diff(existing()).affectedKeys().hasAny(['bonusPoints', 'rating', 'lastDonationDate']);
+    }
+
+    match /hospitals/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && isValidHospital(incoming());
+      allow update: if isOwner(userId) && isValidHospital(incoming()) &&
+                    incoming().role == existing().role &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'address', 'phone']);
+    }
+
+    match /emergency_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if isValidId(requestId) && exists(/databases/$(database)/documents/hospitals/$(request.auth.uid)) && isValidEmergencyRequest(incoming());
+      allow update: if exists(/databases/$(database)/documents/hospitals/$(request.auth.uid)) && 
+                    existing().hospitalId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['status', 'unitsNeeded', 'urgency', 'description']);
+    }
+
+    match /donations/{donationId} {
+      allow read: if isSignedIn() && (resource.data.donorId == request.auth.uid || resource.data.hospitalId == request.auth.uid);
+      allow create: if isValidId(donationId) && exists(/databases/$(database)/documents/hospitals/$(request.auth.uid)) && isValidDonation(incoming());
+      allow delete: if false; // Donations are permanent records
+    }
+  }
+}

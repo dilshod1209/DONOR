@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "Donor": {
+      "title": "Donor",
+      "description": "Information about a blood donor.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "bloodGroup": { "type": "string", "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] },
+        "lastDonationDate": { "type": "string", "format": "date-time" },
+        "bonusPoints": { "type": "number" },
+        "rating": { "type": "number" },
+        "location": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["donor"] }
+      },
+      "required": ["userId", "displayName", "email", "bloodGroup", "role"]
+    },
+    "Hospital": {
+      "title": "Hospital",
+      "description": "Information about a registered hospital.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["hospital"] }
+      },
+      "required": ["userId", "name", "email", "role"]
+    },
+    "EmergencyRequest": {
+      "title": "Emergency Request",
+      "description": "Urgent blood request from a hospital.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "hospitalName": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "unitsNeeded": { "type": "number" },
+        "urgency": { "type": "string", "enum": ["high", "medium", "low"] },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "fulfilled", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "bloodGroup", "unitsNeeded", "urgency", "status", "createdAt"]
+    },
+    "Donation": {
+      "title": "Donation",
+      "description": "Record of a blood donation.",
+      "type": "object",
+      "properties": {
+        "donorId": { "type": "string" },
+        "donorName": { "type": "string" },
+        "hospitalId": { "type": "string" },
+        "hospitalName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "bloodGroup": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["donorId", "hospitalId", "date", "bloodGroup"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "Donor",
+      "description": "Collection of donors and their profiles."
+    },
+    "hospitals": {
+      "schema": "Hospital",
+      "description": "Collection of registered hospitals."
+    },
+    "emergency_requests": {
+      "schema": "EmergencyRequest",
+      "description": "List of active blood requests."
+    },
+    "donations": {
+      "schema": "Donation",
+      "description": "History of all successful donations."
+    }
+  }
+}
